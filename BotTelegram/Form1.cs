@@ -22,7 +22,7 @@ namespace BotTelegram {
         }
 
         private void btnStart_Click(object sender, EventArgs e) {
-            TelegramBot = new Bot(txtTelegramToken.Text);
+            TelegramBot = new Bot(txtTelegramToken.Text,txtRiotApiToken.Text);
             TelegramBot.SetConsoleReferance(ConsoleWrite);
             TelegramBot.StartReceiving();
         }
