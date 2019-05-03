@@ -13,7 +13,9 @@ using RiotSharp;
 using RiotSharp.Misc;
 using RiotSharp.Endpoints.SpectatorEndpoint;
 using RiotSharp.Endpoints.SummonerEndpoint;
+using RiotSharp.Endpoints.ChampionEndpoint;
 using RiotSharp.Endpoints.StaticDataEndpoint.ProfileIcons;
+using RiotSharp.Endpoints.StaticDataEndpoint.Champion;
 using RiotSharp.Endpoints.StaticDataEndpoint;
 using System.Text.RegularExpressions;
 
@@ -25,12 +27,14 @@ namespace BotTelegram.Telegram {
         private RiotApi _lolApi;
         private Regex ValidateName = new Regex("/[0 - 9A - Za - zªµºÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿĂăĄąĆćĘęıŁłŃńŐőŒœŚśŞşŠšŢţŰűŸŹźŻżŽžƒȘșȚțˆˇˉΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩάέήίαβγδεζηθικλμνξοπρςστυφχψωόύώﬁﬂ] +$/ g");
         private ProfileIconListStatic _profileIcons = new ProfileIconListStatic();
+        //private ChampionListStatic _championList = new ChampionListStatic();
         private string _latestVersion = ""; 
         public Bot(string TelegramToken, string RiotToken) {
             _botClient = new TelegramBotClient(TelegramToken);
             _lolApi = RiotApi.GetDevelopmentInstance(RiotToken);
             _botClient.OnMessage += _botClient_OnMessage;
             InitializeProfileIcons();
+            //InitializeChampionList();
 
         }
         private async void InitializeProfileIcons() {
@@ -39,6 +43,9 @@ namespace BotTelegram.Telegram {
             _profileIcons.ProfileIcons = test.ProfileIcons;
             _latestVersion = latestVersion;
         }
+        //private async void InitializeChampionList() {
+            
+        //}
         public void SetConsoleReferance(UtiliDelegate.Console consoleRef) {
             ConsoleWrite = consoleRef;
         }
@@ -66,14 +73,14 @@ namespace BotTelegram.Telegram {
 
                     bool userProfileIcon = _profileIcons.ProfileIcons.TryGetValue(summ.ProfileIconId.ToString(), out icon);
                     if (userProfileIcon)
-                        await SendProfileIconAsync(icon.Image, e.Message.Chat);
+                        await SendProfileIconAsync("http://ddragon.leagueoflegends.com/cdn/" + _latestVersion + "/img/profileicon/" + icon.Image.Fulls, e.Message.Chat);
 
                     //var data = Newtonsoft.Json.JsonConvert.SerializeObject(summ, Newtonsoft.Json.Formatting.Indented);
                     string moreinfo = await SummonerIsInAGameAsync(summ.Id);
                     SendMessageAsync($" Name: {summ.Name}\n Level: {summ.Level}\n Status: {moreinfo}", e.Message.Chat);
                     break;
                 case "/free":
-
+                    GetCurrentRotationAsync();
                     break;
                 case "/mastery":
 
@@ -84,6 +91,19 @@ namespace BotTelegram.Telegram {
             }
                
         }
+        private async Task<string> GetCurrentRotationAsync() {
+            StringBuilder text = new StringBuilder(50);
+            ChampionRotation currentRotaion = await _lolApi.Champion.GetChampionRotationAsync(Region.Euw);
+            text.Append("Free champions:\n<=========>\n");
+            foreach (var item in currentRotaion.FreeChampionIds) {
+                ChampionStatic champ = await _lolApi.StaticData.Champions.GetByKeyAsync(item.ToString(), _latestVersion);
+                text.Append();
+            }
+            
+
+
+               return output;
+        }
         private async Task<string> SummonerIsInAGameAsync(string SummonerId) {
             string output = "";
             CurrentGame test;
@@ -91,7 +111,7 @@ namespace BotTelegram.Telegram {
                  test = await _lolApi.Spectator.GetCurrentGameAsync(Region.Euw, SummonerId);
             }
             catch(Exception ex) {
-                return "Currently non in game";
+                return "Currently not in game";
             }
             output = $"In a {test.GameMode} game\n Map Type: {test.MapType}\n Game Time: {test.GameLength.Minutes}";
 
@@ -114,10 +134,10 @@ namespace BotTelegram.Telegram {
                     );
             
         }
-        private async Task SendProfileIconAsync(ImageStatic photo, Chat SendTochat) {
+        private async Task SendProfileIconAsync(string image, Chat SendTochat) {
              _botClient.SendPhotoAsync(
                      chatId: SendTochat,
-                     photo: "http://ddragon.leagueoflegends.com/cdn/" + _latestVersion + "/img/profileicon/" + photo.Full,
+                     photo: image,
                      caption: "Profile Icon"
                    );
         }
