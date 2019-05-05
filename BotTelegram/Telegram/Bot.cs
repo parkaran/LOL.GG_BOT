@@ -66,7 +66,7 @@ namespace BotTelegram.Telegram {
             if (e.Message.Text == null || e.Message.Type != MessageType.Text) return;
 
             ConsoleWrite($"{DateTime.Now.ToLongTimeString()} {e.Message.Chat.FirstName} sent a message", false);
-
+            e.Message.Text = e.Message.Text.Trim();
             switch (e.Message.Text.Split(' ').First()) {
 
                 case "/start":
@@ -79,8 +79,14 @@ namespace BotTelegram.Telegram {
                     string[] SummonerName = e.Message.Text.Split(' ');
                     if (SummonerName.Length != 2) { SendMessageAsync("Invalid Command...", e.Message.Chat); return; };
                     string name = SummonerName[1].Replace("/", " ").ToLower();
-
-                    Summoner summ = await _lolApi.Summoner.GetSummonerByNameAsync(Region.Euw, name);
+                    Summoner summ = null; ;
+                    try {
+                        summ = await _lolApi.Summoner.GetSummonerByNameAsync(Region.Euw, name);
+                    }
+                    catch (Exception) {
+                        SendMessageAsync($"'{name}' is invalid or dose not exist on the EUW server...",e.Message.Chat);
+                        break;
+                    }
                     ProfileIconStatic icon;
 
                     bool userProfileIcon = _profileIcons.ProfileIcons.TryGetValue(summ.ProfileIconId.ToString(), out icon);
@@ -95,11 +101,19 @@ namespace BotTelegram.Telegram {
                     string Rotations = await GetCurrentRotationAsync();
                     SendMessageAsync($"{Rotations}",e.Message.Chat);
                     break;
-                case "/mastery":
-
+                case "/champ":
+                    string[] champName = e.Message.Text.Split(' ');
+                    if (champName.Length != 2) { SendMessageAsync("Invalid Command, try using /help to get more information", e.Message.Chat); return; };
+                    ChampionData champinfo = GetChampionByName(champName[1].ToLower());
+                    if (champinfo != null) {
+                        await SendProfileIconAsync("http://ddragon.leagueoflegends.com/cdn/img/champion/splash/" + champinfo.Name+ "_0.jpg", e.Message.Chat);
+                        SendMessageAsync($"{champinfo.Name}\nAttack: {champinfo.Info.Attack}\nDefese: {champinfo.Info.Defense}\nMagic: {champinfo.Info.Magic}\nDifficulty: {champinfo.Info.Difficulty}/10\nBlurb: {champinfo.Blurb}", e.Message.Chat);
+                    }
+                    else
+                        SendMessageAsync("Invalid Champion name... sorry", e.Message.Chat);
                     break;
-                default:
-                    SendMessageAsync("Invalid Command, try using /help to get more information", e.Message.Chat);
+                default:                   
+                        SendMessageAsync("Invalid Command, try using /help to get more information", e.Message.Chat);
                     break;
             }
                
@@ -124,9 +138,18 @@ namespace BotTelegram.Telegram {
             return text.ToString();
         }
         private ChampionData GetChampionById(int id) {
-           var champ = _championList.Data.First(x => x.Value.Key == id);
+            var champ = _championList.Data.First(x => x.Value.Key == id);
+            return champ.Value;         
+        }
+        private ChampionData GetChampionByName(string ChampName) {
+            KeyValuePair<string,ChampionData> champ;
+            try {
+                champ = _championList.Data.First(x => x.Value.Name.ToLower().Remove(' ') == ChampName);
+            }
+            catch (Exception) {
+                return null;
+            }
             return champ.Value;
-            
         }
         private async Task<string> SummonerIsInAGameAsync(string SummonerId) {
             string output = "";
@@ -159,10 +182,9 @@ namespace BotTelegram.Telegram {
             
         }
         private async Task SendProfileIconAsync(string image, Chat SendTochat) {
-             _botClient.SendPhotoAsync(
+            await _botClient.SendPhotoAsync(
                      chatId: SendTochat,
-                     photo: image,
-                     caption: "Profile Icon"
+                     photo: image
                    );
         }
         public void StartReceiving() {
