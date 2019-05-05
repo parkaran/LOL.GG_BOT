@@ -18,6 +18,7 @@ using RiotSharp.Endpoints.StaticDataEndpoint.ProfileIcons;
 using RiotSharp.Endpoints.StaticDataEndpoint.Champion;
 using RiotSharp.Endpoints.StaticDataEndpoint;
 using System.Text.RegularExpressions;
+using System.Net;
 
 namespace BotTelegram.Telegram {
     public class Bot {
@@ -27,25 +28,36 @@ namespace BotTelegram.Telegram {
         private RiotApi _lolApi;
         private Regex ValidateName = new Regex("/[0 - 9A - Za - zªµºÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿĂăĄąĆćĘęıŁłŃńŐőŒœŚśŞşŠšŢţŰűŸŹźŻżŽžƒȘșȚțˆˇˉΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩάέήίαβγδεζηθικλμνξοπρςστυφχψωόύώﬁﬂ] +$/ g");
         private ProfileIconListStatic _profileIcons = new ProfileIconListStatic();
-        //private ChampionListStatic _championList = new ChampionListStatic();
+        private StaticChampionData _championList;
         private string _latestVersion = ""; 
         public Bot(string TelegramToken, string RiotToken) {
-            _botClient = new TelegramBotClient(TelegramToken);
+            //Riot API
             _lolApi = RiotApi.GetDevelopmentInstance(RiotToken);
-            _botClient.OnMessage += _botClient_OnMessage;
-            InitializeProfileIcons();
-            //InitializeChampionList();
+            InizializeRiotApiAsync();
 
+
+            //Telegram
+            _botClient = new TelegramBotClient(TelegramToken);
+            _botClient.OnMessage += _botClient_OnMessage;          
         }
-        private async void InitializeProfileIcons() {
+        private async Task InizializeRiotApiAsync() {
+            await InitializeProfileIcons();
+            InitializeChampionList();
+        }
+        private async Task InitializeProfileIcons() {
             var latestVersion = (await _lolApi.StaticData.Versions.GetAllAsync()).First();
             var test = await _lolApi.StaticData.ProfileIcons.GetAllAsync(latestVersion);
             _profileIcons.ProfileIcons = test.ProfileIcons;
             _latestVersion = latestVersion;
         }
-        //private async void InitializeChampionList() {
+        private async void InitializeChampionList() {
+            _championList = new StaticChampionData();
+            var json = new WebClient().DownloadString("http://ddragon.leagueoflegends.com/cdn/"+_latestVersion+"/data/en_US/champion.json");
+            var champs = Newtonsoft.Json.JsonConvert.DeserializeObject<StaticChampionData>(json);
+            _championList = champs;
             
-        //}
+        }
+        
         public void SetConsoleReferance(UtiliDelegate.Console consoleRef) {
             ConsoleWrite = consoleRef;
         }
@@ -73,14 +85,15 @@ namespace BotTelegram.Telegram {
 
                     bool userProfileIcon = _profileIcons.ProfileIcons.TryGetValue(summ.ProfileIconId.ToString(), out icon);
                     if (userProfileIcon)
-                        await SendProfileIconAsync("http://ddragon.leagueoflegends.com/cdn/" + _latestVersion + "/img/profileicon/" + icon.Image.Fulls, e.Message.Chat);
+                        await SendProfileIconAsync("http://ddragon.leagueoflegends.com/cdn/" + _latestVersion + "/img/profileicon/" + icon.Image.Full, e.Message.Chat);
 
                     //var data = Newtonsoft.Json.JsonConvert.SerializeObject(summ, Newtonsoft.Json.Formatting.Indented);
                     string moreinfo = await SummonerIsInAGameAsync(summ.Id);
                     SendMessageAsync($" Name: {summ.Name}\n Level: {summ.Level}\n Status: {moreinfo}", e.Message.Chat);
                     break;
                 case "/free":
-                    GetCurrentRotationAsync();
+                    string Rotations = await GetCurrentRotationAsync();
+                    SendMessageAsync($"{Rotations}",e.Message.Chat);
                     break;
                 case "/mastery":
 
@@ -96,13 +109,24 @@ namespace BotTelegram.Telegram {
             ChampionRotation currentRotaion = await _lolApi.Champion.GetChampionRotationAsync(Region.Euw);
             text.Append("Free champions:\n<=========>\n");
             foreach (var item in currentRotaion.FreeChampionIds) {
-                ChampionStatic champ = await _lolApi.StaticData.Champions.GetByKeyAsync(item.ToString(), _latestVersion);
-                text.Append();
+                ChampionData champ = GetChampionById(item);
+                text.Append($"-♠- {champ.Name} <-> Champ difficulty: {champ.Info.Difficulty}/10\n");
             }
+            text.Append("\n<=========>\n");
+            text.Append("\nFree champions for new Players:\n<=========>\n");
+            foreach (var item in currentRotaion.FreeChampionIdsForNewPlayers) {
+                ChampionData champ = GetChampionById(item);
+                text.Append($"-♠- {champ.Name} <-> Champ difficulty: {champ.Info.Difficulty}/10\n");
+            }
+            text.Append("\n<=========>\n");
             
-
-
-               return output;
+            
+            return text.ToString();
+        }
+        private ChampionData GetChampionById(int id) {
+           var champ = _championList.Data.First(x => x.Value.Key == id);
+            return champ.Value;
+            
         }
         private async Task<string> SummonerIsInAGameAsync(string SummonerId) {
             string output = "";
@@ -113,14 +137,14 @@ namespace BotTelegram.Telegram {
             catch(Exception ex) {
                 return "Currently not in game";
             }
-            output = $"In a {test.GameMode} game\n Map Type: {test.MapType}\n Game Time: {test.GameLength.Minutes}";
+            output = $"In a {test.GameMode} game\n Map Type: {test.MapType}\n Game Time: {test.GameLength.Minutes} min";
 
             return output;
         }
         private string HelpCommand() { 
             string[] Comm = new string[]{   "/name 'Summoner_Name'--> get information on the EU summoners",
                                             "/free --> get free available champions",
-                                            "/mastery --> no info yet..."};
+                                            "/champ 'Champ_Name' --> get info on the champion"};
             string output ="";
             foreach (var com in Comm) {
                 output += com + "\n";
